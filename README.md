@@ -1,11 +1,11 @@
-# Unbroken
+# Unbroken 🚢 📦 ⚯
 Team Chaos Coders for Couchbase Disaster Resilience Hackathon
 
 # Work in Progress with a tech-stack of the tools:
-- Couchbase as the 
+- Couchbase as the multipurpose NoSQL database for transactional, analytical, mobile, and AI applications.
 - Claude with `Sonnet 4` model for faster ideation of system architecture
 - Firebase Studio for web and mobile application creation
-- 
+- ...
 
 
 # Unbroken: Disaster-Resilient Logistics Tracker - PoC Architecture
