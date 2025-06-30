@@ -1,208 +1,106 @@
-# Unbroken Mobile App - MVP
+# Couchbase Lite React Native - Expo Travel Sample App 👋
 
-A React Native mobile application demonstrating disaster-resilient logistics tracking using offline-first architecture.
+# Overview
 
-## Features
+This is an example app of a simple React Native app that uses the [Couchbase Lite](https://www.couchbase.com/products/lite) database. The app lists a set of Landmarks and Hotels that are provided as part of the [Couchbase Travel-Sample](https://docs.couchbase.com/cloud/get-started/run-first-queries.html) dataset. 
 
-### MVP Core Features
-- **Role-based Interface**: Switch between Driver, Dock Worker, and Warehouse Manager roles
-- **QR Code Scanning**: Scan QR codes to track packages and record handoff events
-- **Offline Event Recording**: Record logistics events that are stored locally
-- **Sync Simulation**: Simulate syncing offline events to the cloud
-- **Real-time Status**: View sync status and event history
+This app assumes you have a Capella Free Tier operational cluster with the travel-sample dataset installed.  To find out more information about the free tier, please visit this blog post [Couchbase Cloud](https://www.couchbase.com/blog/free-tier-capella-dev-available/).
 
-### Disaster Resilience Features
-- **Offline Operation**: App works without internet connection
-- **Local Data Storage**: All events stored locally using AsyncStorage
-- **Sync Status Tracking**: Clear visibility of synced vs offline events
-- **Conflict Resolution**: Timestamp-based conflict resolution for concurrent updates
+## App Services Setup
+Log into your Capella Free-Tier account.  A listing of Operational Clusters should appear.  Click on your demo-cluster in the listing.  This should bring up the Home page for your cluster.
 
-## Installation & Setup
+### Create a new App Service
+On the Home tab under the `Explore your cluster` section find the section `Try App Services` and click on the link `Deploy App Services`.
 
-### Prerequisites
-- Node.js (v16 or higher)
-- React Native CLI
-- Android Studio (for Android development)
-- Xcode (for iOS development, macOS only)
+On the main App Services page click the `Create App Service` button.  The Create App Services page should appear.
 
-### Installation Steps
+On the Create App Services page, give your app service a name.  You can name it anything you like, for example `demo-app-service`.  Under the Linked Cluster section select `demo-cluster` from the pull-down select list.  Finally, you can click the `Create App Service` button.
 
-1. **Install Dependencies**
-   ```bash
-   cd UnbrokenMobile
-   npm install
-   ```
+It will take between 5 and 25 minutes for your new App Service to be created. 
 
-2. **iOS Setup (macOS only)**
-   ```bash
-   cd ios
-   bundle install
-   bundle exec pod install
-   cd ..
-   ```
+### Creating a new Endpoint
 
-3. **Run the App**
-   ```bash
-   # For Android
-   npx react-native run-android
-   
-   # For iOS
-   npx react-native run-ios
-   ```
+Once your cluster is created and the status is listed as `Healthy`, click on the newly created App Service name in the list , i.e. `demo-app-service`.
 
-## Usage
+One the App Endpoints screen, click the `Create App Endpoint` button to create a new Endpoint.
 
-### Basic Operation
+On the Create App Endpoint page, enter the name `locations` in the App Endpoint Name field.  In the Bucket selection list, select the `travel-sample` bucket.  In the Scope selection list, select the `inventory` scope.
 
-1. **Select Role**: Choose your role (Driver, Dock Worker, or Warehouse Manager)
-2. **Scan QR Code**: Tap "Scan QR Code" to scan package QR codes
-3. **Record Events**: Events are automatically recorded when scanning QR codes
-4. **Manual Events**: Use "Record Manual Event" to create events without scanning
-5. **Sync Data**: Tap "Sync Events" to simulate syncing offline data
+Under the `Chose collections to link` section, click the `Link` switch for both the `landmark` and `hotel` collections.  This will link those two collections to this App Endpoint allow us to sync data from those collections to our mobile app.  
 
-### Demo QR Codes
+Finally, click the `Create App Endpoint` button.  The App Endpoints listing page should appear.
 
-The app includes sample data with these QR codes:
-- `QR-MED-001` - Medical Thermometers
-- `QR-MED-002` - First Aid Kits
+### Setup App Endpoint Security
+On the App Endpoints listing page, click on the newly created endpoint `locations`.  This will bring up the App Endpoint section of Capella App Services. 
 
-### Testing Disaster Resilience Scenarios
+On the Security page the Access and Validation screen should appear.  A message on this page states that the App Endpoint is paused.  Click the `Resume app endpoint` link to resume the endpoint.   This may take a few seconds to complete.
 
-#### Scenario 1: Network Outage Simulation
-1. **Start the app** and record some events
-2. **Disconnect network** (turn off WiFi/mobile data)
-3. **Continue using the app** - scan QR codes and record events
-4. **Verify offline operation** - events are stored locally
-5. **Reconnect network** and tap "Sync Events"
-6. **Verify sync** - all offline events are synced
+We are going to use the default  Access Control and Data Validation scripts, so click the `App Users` tab from the navigation menu on the left.
 
-#### Scenario 2: Data Center Failure Simulation
-1. **Record events** while connected to network
-2. **Simulate data center failure** (this is simulated in the app)
-3. **Continue operations** - app continues working offline
-4. **Verify data persistence** - all data remains accessible
-5. **Simulate recovery** - tap "Sync Events" to restore connectivity
+On the App Users page, click the `Create App User` button.  This will bring up the Create App User page.  Enter a username and password for the new user.  For this example, you can use `demo@example.com` for the username and `P@ssw0rd12` for the password which are hard coded in the mobile app code.  
 
-## Architecture
+Click the `Configure Access Grants` link to expand the grants section.  Under the `Assign Channels` section locate the `hotel` listing under `LINKED COLLECTIONS`  and add an Admin Channel name of `hotel` and hit the enter key. It should show the name in a chip format.  Now locate the `landmark` listing under `LINKED COLLECTIONS` and add an Admin Channel name of `landmark` and hit the enter key.  It should show the name in a chip format.  This will give the new user access to the `hotel` and `landmark` collections.
+Click the `Create App User` button to create the new user.
 
-### Data Model
-```typescript
-interface Event {
-  _id: string;
-  type: 'event';
-  shipment_id: string;
-  item_id: string;
-  event_type: 'pickup' | 'handoff' | 'delivery';
-  location: { lat: number; lng: number; address: string };
-  timestamp: string;
-  user_id: string;
-  notes?: string;
-  synced: boolean;
-}
-```
+### Setup Delta Sync (optional)
+Click on the `Settings` tab on the top navigation menu.  Fom the `App Endpoint Settings` screen click on the `Delta Sync` tab located in the CONFIGURATION menu on the left side of the page.  
 
-### Components
-- **App.tsx**: Main application component
-- **QRScanner.tsx**: QR code scanning component
-- **DataService.ts**: Data management and sync simulation
+Click the `Enable Delta Sync` switch to enable Delta Sync.  Click the `Save` button to save the changes.
 
-### Storage
-- **AsyncStorage**: Local data persistence (MVP implementation)
-- **Future**: Couchbase Lite integration for production
+### Get the Endpoint URL 
 
-## Development
+Click on the `Connect` tab on the navigation menu in the header of the page.  The Connect page should appear.  The URL for the App Endpoint is listed in the `Public Connection` section.  You will need this URL to connect the mobile app to the App Endpoint.  Click the two sheets of paper (copy) button next to the public connection string in order to copy the URL to your clipboard on your computer.  We can then paste in the URL into the code.
 
-### Project Structure
-```
-UnbrokenMobile/
-├── src/
-│   ├── components/
-│   │   └── QRScanner.tsx
-│   └── services/
-│       ├── CouchbaseService.ts (future)
-│       └── DataService.ts
-├── App.tsx
-└── package.json
-```
+## Pull down the code
+From a terminal you can use the git command to pull down the code from the repository:
 
-### Adding New Features
-
-1. **New Event Types**: Add to the `event_type` union type in DataService.ts
-2. **New Roles**: Add to the `roles` array in App.tsx
-3. **New Data Fields**: Update the TypeScript interfaces
-
-### Testing
-
-#### Manual Testing
-1. Test QR scanning with sample QR codes
-2. Test offline operation by disabling network
-3. Test sync functionality
-4. Test role switching
-
-#### Automated Testing (Future)
 ```bash
-npm test
-```
+git clone https://github.com/couchbase-examples/couchbase-tutorials.git
+cd expo-cbl-travel
+````
 
-## Troubleshooting
+## Set up the Mobile App 
 
-### Common Issues
+To set up the mobile app, first install the npm dependencies from the terminal:
 
-1. **Camera Permission Denied**
-   - Ensure camera permissions are granted in device settings
-   - Restart the app after granting permissions
-
-2. **QR Scanner Not Working**
-   - Check if camera is being used by another app
-   - Ensure good lighting conditions
-   - Try different QR codes
-
-3. **Sync Issues**
-   - Check network connectivity
-   - Restart the app
-   - Clear app data if needed
-
-### Debug Mode
-Enable debug logging by checking the console output:
 ```bash
-npx react-native log-android  # Android
-npx react-native log-ios      # iOS
+npm install
 ```
 
-## Future Enhancements
+### Update the configuration
+Open the `services/database.service.ts` file and locate the `setupReplicator` function.  You will be required to update the `targetUrl` variable with the connection string to your Couchbase App Services Endpoint connection string.  Paste in the value that you copied from the directions above into the `targetUrl` variable string value.  
 
-### Phase 2: Couchbase Lite Integration
-- Replace AsyncStorage with Couchbase Lite
-- Implement real sync with Sync Gateway
-- Add conflict resolution
+```typescript 
+const targetUrl = new URLEndpoint('wss://xxxxxx.apps.cloud.couchbase.com:4984/travel-location');
+```
 
-### Phase 3: Advanced Features
-- GPS location tracking
-- Photo capture for condition documentation
-- Real-time notifications
-- Advanced analytics
+### Running the app
+To run an expo app, you can use the following command:
 
-### Phase 4: Production Features
-- Multi-node cluster support
-- Advanced security
-- Performance optimization
-- Comprehensive testing
+```bash
+npm run start
+```
 
-## Contributing
+In the output, you'll find options to open the app in a iOS simulator, or Android emulator.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+More Information on developing mobile apps on Expo can be found in the links below:
+- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
+- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
+- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
 
-## License
+## Learn more
 
-This project is part of the Couchbase Disaster Resilience Hackathon.
+To learn more about Couchbase Lite and React Native, look at the following resources:
+- [cbl-reactnative documentation](https://cbl-reactnative.dev/)
 
-## Support
+To learn more about Expo, look at the following resources:
+- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
+- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
 
-For issues and questions:
-1. Check the troubleshooting section
-2. Review the console logs
-3. Create an issue in the repository
+## Join the community
+
+Join our community of developers 
+
+- [Discord community](https://bit.ly/3NbK5vg): Chat with Couchbase developers and ask questions.
+- [Stack Overflow community](https://stackoverflow.com/tags/couchbase/info/): Ask questions.
+- [Developer Portal](https://www.couchbase.com/developer): more information including tutorials and learning paths. 
