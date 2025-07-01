@@ -14,7 +14,9 @@ import {
     URLEndpoint,
     ValueIndexItem,
     MutableDocument,
-    ReplicatorStatus
+    ReplicatorStatus,
+    ListenerToken,
+    ReplicatorActivityLevel
 } from 'cbl-reactnative';
 
 /**
@@ -24,11 +26,18 @@ export class DatabaseService {
     private database: Database | undefined;
     private replicator: Replicator | undefined;
     private engine: CblReactNativeEngine | undefined;
+    private listenerToken: ListenerToken | null = null;
+    private healthCheckTimer: NodeJS.Timeout | null = null;
 
     constructor() {
         //must create a new engine to use the SDK in a React Native environment
         //this must only be done once for the entire app.  This will be implemented as singleton, so it's Ok here.
         this.engine = new CblReactNativeEngine();
+
+        // Bind 'this' to the methods to make them stable during hot reloads
+        this.connectToPrimary = this.connectToPrimary.bind(this);
+        this.connectToSecondary = this.connectToSecondary.bind(this);
+        this.startPrimaryHealthCheck = this.startPrimaryHealthCheck.bind(this);
     }
 
     /**
@@ -254,18 +263,17 @@ export class DatabaseService {
      */
     public async initializeDatabase() {
         try {
-            //turned on database logging too verbose to see information in IDE
-            await Database.setLogLevel(LogDomain.ALL, LogLevel.DEBUG);
+            await Database.setLogLevel(LogDomain.ALL, LogLevel.VERBOSE);
             await this.setupDatabase();
             const path = await this.database?.getPath()
-            console.debug(`Database Setup with path: ${path}`);
+            console.log(`Database Setup with path: ${path}`);
             await this.setupIndexes();
-            if (this.replicator === undefined) {
+            if (!this.replicator) {
+                // This starts the entire HA process
                 await this.setupReplicator();
             }
-            await this.replicator?.start(true);
         } catch (error) {
-            console.log(`Error: ${error}`);
+            console.log(`Error during initialization: ${error}`);
             throw error;
         }
     }
@@ -440,28 +448,111 @@ export class DatabaseService {
      * @throws Will throw an error if no collections are found to set the replicator to.
      */
     private async setupReplicator() {
+        await this.connectToPrimary();
+    }
+
+    private async connectToPrimary(): Promise<void> {
+        console.log("PRIMARY: Attempting connection...");
+        await this.stopAndClearReplicator();
+
         const collections = await this.getCollections();
-        if (collections.length > 0) {
+        if (collections.length === 0) throw new Error("No collections found.");
 
-            //****************************************************************
-            //YOU MUST CHANGE THIS TO YOUR LOCAL IP ADDRESS OR TO YOUR CAPELLA CONNECTION STRING
-            //****************************************************************
-            const targetUrl = new URLEndpoint('wss://xyz.cloud.couchbase.com:4984');
+        const primaryUrl = new URLEndpoint('wss://lyy7hcxorv51baby.apps.cloud.couchbase.com:4984/unbroken-ep');
+        const config = this.createConfig(primaryUrl, collections);
+        this.replicator = await Replicator.create(config);
 
-            //****************************************************************
-            //YOU MUST CREATE THIS USER IN YOUR SYNC GATEWAY CONFIGURATION OR CAPPELLA APP SERVICE ENDPOINT
-            //****************************************************************
-            const auth = new BasicAuthenticator('user', 'pass');
+        this.listenerToken = this.replicator.addChangeListener((change) => {
+            const { activity, error } = change.status;
+            console.log(`PRIMARY: Status is ${activity}`);
 
-            const config = new ReplicatorConfiguration(targetUrl);
-            config.addCollections(collections);
-            config.setAuthenticator(auth);
-            config.setContinuous(true);
-            config.setAcceptOnlySelfSignedCerts(false);
-            this.replicator = await Replicator.create(config);
-        } else {
-            throw new Error('No collections found to set replicator to');
+            if (activity === ReplicatorActivityLevel.STOPPED || activity === ReplicatorActivityLevel.OFFLINE) {
+                if (error) console.error("PRIMARY: Connection error -> ", error.message);
+                console.log("PRIMARY: Connection lost. Failing over to secondary. 🚧");
+                this.connectToSecondary();
+            }
+        });
+        this.replicator.start();
+    }
+
+    /**
+     * Attempts to connect to the SECONDARY endpoint and starts health checks for failback.
+     */
+    private async connectToSecondary(): Promise<void> {
+        console.log("SECONDARY: Attempting connection...");
+        await this.stopAndClearReplicator();
+
+        const collections = await this.getCollections();
+        if (collections.length === 0) throw new Error("No collections found.");
+
+        const secondaryUrl = new URLEndpoint('wss://qz27qsrln5w.apps.cloud.couchbase.com:4984/unbroken-ep');
+        const config = this.createConfig(secondaryUrl, collections);
+        this.replicator = await Replicator.create(config);
+
+        this.listenerToken = this.replicator.addChangeListener((change) => {
+            const { activity } = change.status;
+            console.log(`SECONDARY: Status is ${activity}`);
+
+            if (activity === ReplicatorActivityLevel.IDLE || activity === ReplicatorActivityLevel.BUSY) {
+                this.startPrimaryHealthCheck();
+            }
+        });
+        this.replicator.start();
+    }
+
+    /**
+     * Periodically checks if the primary endpoint is back online to trigger a failback.
+     */
+    private startPrimaryHealthCheck(): void {
+        if (this.healthCheckTimer) return; // Prevent multiple timers
+
+        const primaryUrl = new URLEndpoint('wss://lyy7hcxorv51baby.apps.cloud.couchbase.com:4984/unbroken-ep');
+        const healthCheckInterval = 30000; // 30 seconds
+
+        console.log("HEALTH CHECK: Starting periodic checks for primary endpoint... 🩺");
+        this.healthCheckTimer = setInterval(async () => {
+            try {
+                // A simple fetch to the Sync Gateway's root is a lightweight health check
+                const response = await fetch(primaryUrl.url.replace('wss://', 'https://').replace('/unbroken-ep', '/'));
+                if (response.ok) {
+                    console.log("HEALTH CHECK: Primary endpoint is back online! Failing back... ✅");
+                    await this.connectToPrimary(); // Triggers failback
+                }
+            } catch (error) {
+                console.log("HEALTH CHECK: Primary endpoint still unreachable.");
+            }
+        }, healthCheckInterval);
+    }
+
+    /**
+     * Creates a replicator configuration.
+     */
+    private createConfig(endpoint: URLEndpoint, collections: Collection[]): ReplicatorConfiguration {
+        const auth = new BasicAuthenticator('chaos_coder_01', 'Uk$7QkWq7U2yiHC');
+        const config = new ReplicatorConfiguration(endpoint);
+        config.addCollections(collections);
+        config.setAuthenticator(auth);
+        config.setContinuous(true);
+        config.setAcceptOnlySelfSignedCerts(false);
+        return config;
+    }
+
+    /**
+     * Stops and cleans up the current replicator and its listeners.
+     */
+    private async stopAndClearReplicator(): Promise<void> {
+        if (this.healthCheckTimer) {
+            clearInterval(this.healthCheckTimer);
+            this.healthCheckTimer = null;
         }
+        if (!this.replicator) return;
+        if (this.listenerToken) {
+            this.replicator.removeChangeListener(this.listenerToken);
+            this.listenerToken = null;
+        }
+        await this.replicator.stop();
+        this.replicator = null;
+        console.log("Replicator instance stopped and cleared.");
     }
 
     /**
